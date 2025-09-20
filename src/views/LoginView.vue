@@ -73,7 +73,12 @@ const onSubmit = async () => {
     loading.value = true
     try {
         await auth.login({ email: email.value, password: password.value })
-        router.push("/")
+
+        if (auth.user?.role === "admin") {
+            router.push("/admin")
+        } else {
+            router.push("/")
+        }
     } catch (e) {
         alert("เข้าสู่ระบบไม่สำเร็จ")
     } finally {
@@ -81,15 +86,27 @@ const onSubmit = async () => {
     }
 }
 
-const handleRegister = async ({ username, email, password }) => {
+const handleRegister = async ({ username, email, password }, done) => {
     if (typeof auth.register !== "function") {
-        throw new Error("ยังไม่ได้เชื่อมต่อระบบสมัครสมาชิก")
+        return done({ statusCode: 500, message: "ยังไม่ได้เชื่อมต่อระบบสมัครสมาชิก" })
     }
-    await auth.register({ username, email, password })
 
     try {
-        await auth.login({ email, password })
-        router.push("/")
-    } catch { }
+        await auth.register({ username, email, password })
+        done(null)
+
+        try {
+            await auth.login({ email, password })
+            router.push("/")
+        } catch {
+        }
+    } catch (e) {
+        const status = e?.statusCode || e?.response?.status || e?.status || 500
+        const msgFromApi =
+            e?.message ||
+            e?.response?.data?.message ||
+            (status === 409 ? "Email already registered" : "Register failed")
+        return done({ statusCode: status, message: msgFromApi })
+    }
 }
 </script>

@@ -32,8 +32,8 @@
                   You name
                 </label>
                 <div class="relative">
-                  <input ref="userNameInput" v-model="userName" id="reg-userName" type="userName" autocomplete="userName"
-                    placeholder="name" required class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-gray-900
+                  <input ref="userNameInput" v-model="userName" id="reg-userName" type="userName"
+                    autocomplete="userName" placeholder="name" required class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-gray-900
                            focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500
                            dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
                 </div>
@@ -45,10 +45,16 @@
                 </label>
                 <div class="relative">
                   <input ref="emailInput" v-model="email" id="reg-email" type="email" autocomplete="email"
-                    placeholder="name@company.com" required class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-gray-900
-                           focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500
-                           dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
+                    placeholder="name@company.com" required :aria-invalid="emailTaken ? 'true' : 'false'"
+                    :aria-describedby="emailTaken ? 'reg-email-error' : null" class="w-full rounded-lg border bg-gray-50 px-4 py-2.5 text-gray-900
+             focus:outline-none focus:ring-2
+             dark:bg-gray-700 dark:text-white" :class="emailTaken
+              ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500'
+              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600'" />
                 </div>
+                <p v-if="emailTaken" id="reg-email-error" class="mt-3 text-sm text-red-600 dark:text-red-400">
+                  อีเมลนี้ถูกใช้งานแล้ว
+                </p>
               </div>
 
               <div>
@@ -71,12 +77,6 @@
                          dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
               </div>
 
-              <!-- Error -->
-              <p v-if="error" class="text-sm font-medium text-red-600 dark:text-red-400">
-                {{ error }}
-              </p>
-
-              <!-- Actions -->
               <div class="mt-2 grid grid-cols-2 gap-3">
                 <button type="button" @click="close" class="rounded-lg border border-gray-300 px-4 py-2.5 font-semibold text-gray-700 transition
                          hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700/40">
@@ -114,6 +114,7 @@ const password = ref("")
 const confirm = ref("")
 const error = ref("")
 const submitting = ref(false)
+const emailTaken = ref(false)
 const emailInput = ref(null)
 
 const focusEmail = async () => {
@@ -121,23 +122,27 @@ const focusEmail = async () => {
   emailInput.value?.focus()
 }
 
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (open) {
-      userName.value = ""
-      email.value = ""
-      password.value = ""
-      confirm.value = ""
-      error.value = ""
-      document.body.classList.add("overflow-hidden")
-      focusEmail()
-    } else {
-      document.body.classList.remove("overflow-hidden")
-    }
-  },
-  { immediate: true }
-)
+watch(() => props.modelValue, (open) => {
+  if (open) {
+    userName.value = ""
+    email.value = ""
+    password.value = ""
+    confirm.value = ""
+    error.value = ""
+    emailTaken.value = false
+    document.body.classList.add("overflow-hidden")
+    focusEmail()
+  } else {
+    document.body.classList.remove("overflow-hidden")
+  }
+}, { immediate: true })
+
+watch(email, () => {
+  if (emailTaken.value) emailTaken.value = false
+  if (error.value === "อีเมลนี้ถูกใช้งานแล้ว" || error.value === "Email already registered") {
+    error.value = ""
+  }
+})
 
 const close = () => emit("update:modelValue", false)
 
@@ -151,6 +156,7 @@ const canSubmit = computed(() => {
 
 const onSubmit = async () => {
   error.value = ""
+  emailTaken.value = false
   if (password.value !== confirm.value) {
     error.value = "รหัสผ่านไม่ตรงกัน"
     return
@@ -162,10 +168,26 @@ const onSubmit = async () => {
 
   submitting.value = true
   try {
-    emit("submit", { username: userName.value, email: email.value, password: password.value })
+    const err = await new Promise((resolve) => {
+      emit("submit", { username: userName.value, email: email.value, password: password.value }, resolve)
+    })
+
+    if (err) {
+      const status = err?.statusCode ?? err?.response?.status
+      const msg = err?.message || "Create an account failed"
+
+      if (status === 409) {
+        emailTaken.value = true
+        error.value = msg === "Email already registered" ? "อีเมลนี้ถูกใช้งานแล้ว" : msg
+        await focusEmail()
+        return
+      }
+
+      error.value = msg
+      return
+    }
+
     close()
-  } catch (e) {
-    error.value = e?.message || "Create an account failed"
   } finally {
     submitting.value = false
   }
